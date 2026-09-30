@@ -1,7 +1,6 @@
 package mx.jun.trading.strategy;
 
 import mx.jun.trading.market.Candle;
-import mx.jun.trading.market.MarketDataService;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -17,8 +16,7 @@ class EmaCrossStrategyTest {
     @Test
     void shouldDetectBuyAndSellCrosses() {
 
-        MarketDataService marketDataService = new MarketDataService();
-        List<Candle> candles = marketDataService.getCandles();
+        List<Candle> candles = createTrendCandles();
 
         EmaCrossStrategy strategy = new EmaCrossStrategy();
 
@@ -48,7 +46,34 @@ class EmaCrossStrategyTest {
         );
     }
 
+    private List<Candle> createTrendCandles() {
+
+        List<Candle> candles = new ArrayList<>();
+
+        BigDecimal price = new BigDecimal("3500");
+
+        for (int i = 0; i < 150; i++) {
+
+            BigDecimal movement;
+
+            if (i < 50) {
+                movement = new BigDecimal("-2");
+            } else if (i < 100) {
+                movement = new BigDecimal("4");
+            } else {
+                movement = new BigDecimal("-3");
+            }
+
+            price = price.add(movement);
+
+            candles.add(candle(price.toPlainString()));
+        }
+
+        return candles;
+    }
+
     private Candle candle(String close) {
+
         BigDecimal price = new BigDecimal(close);
 
         return new Candle(
