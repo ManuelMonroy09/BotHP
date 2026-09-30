@@ -1,44 +1,31 @@
 package mx.jun.trading.runner;
 
-import mx.jun.trading.indicator.EmaCalculator;
+import mx.jun.trading.backtest.BacktestEngine;
+import mx.jun.trading.backtest.PerformanceAnalyzer;
 import mx.jun.trading.market.Candle;
 import mx.jun.trading.market.MarketDataService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-
 import java.math.BigDecimal;
 import java.util.List;
 
 @Component
 public class StartupRunner implements CommandLineRunner {
-
     private final MarketDataService marketDataService;
-    private final EmaCalculator emaCalculator;
+    private final BacktestEngine backtestEngine = new BacktestEngine();
+    private final PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
 
     public StartupRunner(MarketDataService marketDataService) {
         this.marketDataService = marketDataService;
-        this.emaCalculator = new EmaCalculator();
     }
 
     @Override
     public void run(String... args) {
-
         List<Candle> candles = marketDataService.getCandles();
-
         System.out.println("Velas recibidas: " + candles.size());
+        System.out.println("Último cierre: " + candles.get(candles.size() - 1).close());
 
-        List<BigDecimal> closingPrices = candles.stream()
-                .map(Candle::close)
-                .toList();
-
-        List<BigDecimal> ema20 = emaCalculator.calculate(closingPrices, 20);
-        List<BigDecimal> ema50 = emaCalculator.calculate(closingPrices, 50);
-
-        System.out.println("EMA20 calculada: " + ema20.size() + " valores");
-        System.out.println("EMA50 calculada: " + ema50.size() + " valores");
-
-        System.out.println("Último cierre: " + closingPrices.get(closingPrices.size() - 1));
-        System.out.println("Última EMA20: " + ema20.get(ema20.size() - 1));
-        System.out.println("Última EMA50: " + ema50.get(ema50.size() - 1));
+        var result = backtestEngine.run(candles, new BigDecimal("20"));
+        System.out.println(performanceAnalyzer.summary(result));
     }
 }
