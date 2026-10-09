@@ -40,7 +40,7 @@ public class EmaRegimeVolatilityStrategy {
 
         if (e20.compareTo(e50) > 0 && e20.compareTo(e20p) > 0
                 && e50.compareTo(e50p) > 0 && close.compareTo(e50) > 0
-                && validVolatility && (bullishCross || e20.compareTo(e50) > 0)) {
+                && validVolatility && bullishCross) {
             return Signal.BUY;
         }
         return Signal.HOLD;
@@ -91,7 +91,7 @@ public class EmaRegimeVolatilityStrategy {
 
             if (trendingUp && e20.compareTo(e50) > 0 && e20.compareTo(e20p) > 0
                     && e50.compareTo(e50p) > 0 && close.compareTo(e50) > 0
-                    && validVolatility && (bullishCross || e20.compareTo(e50) > 0)) {
+                    && validVolatility && bullishCross) {
                 signals.set(i, Signal.BUY);
             }
         }
