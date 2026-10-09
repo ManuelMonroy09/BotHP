@@ -7,6 +7,7 @@ public class PerformanceAnalyzer {
     public String summary(BacktestResult r) {
         BigDecimal winRate = r.totalTrades() == 0 ? BigDecimal.ZERO :
                 BigDecimal.valueOf(r.winningTrades() * 100.0 / r.totalTrades()).setScale(2, RoundingMode.HALF_UP);
+        String profitFactor = r.profitFactor() == null ? "∞" : r.profitFactor().toPlainString();
         return """
                 === BACKTEST OPCION C ===
                 Capital inicial: %s
@@ -21,6 +22,6 @@ public class PerformanceAnalyzer {
                 Profit factor:   %s
                 """.formatted(r.initialCapital(), r.finalCapital(), r.netPnl(),
                 r.returnPercentage(), r.maxDrawdownPercentage(), r.totalTrades(),
-                r.winningTrades(), r.losingTrades(), winRate, r.profitFactor());
+                r.winningTrades(), r.losingTrades(), winRate, profitFactor);
     }
 }
