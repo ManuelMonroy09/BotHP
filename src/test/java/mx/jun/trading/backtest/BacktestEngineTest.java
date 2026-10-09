@@ -41,6 +41,45 @@ class BacktestEngineTest {
     }
 
     @Test
+    void rechazaVelasConRangoOhlcInconsistente() {
+        List<Candle> candles = new ArrayList<>(sampleCandles(60));
+        Candle original = candles.get(55);
+        candles.set(55, new Candle(original.timestamp(), original.open(),
+                original.open().subtract(BigDecimal.ONE), original.low(),
+                original.close(), original.volume()));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new BacktestEngine().run(candles, new BigDecimal("20")));
+    }
+
+    @Test
+    void elDrawdownIncluyeCaidasIntrvelares() {
+        List<Candle> baselineCandles = sampleCandles(180);
+        BacktestResult baseline = new BacktestEngine().run(baselineCandles, new BigDecimal("20"));
+        assertFalse(baseline.trades().isEmpty(), "La prueba necesita una entrada");
+
+        Instant firstEntry = baseline.trades().get(0).entryTime();
+        List<Candle> wickCandles = new ArrayList<>(baselineCandles);
+        int entryIndex = -1;
+        for (int i = 0; i < wickCandles.size(); i++) {
+            if (wickCandles.get(i).timestamp().equals(firstEntry)) {
+                entryIndex = i;
+                break;
+            }
+        }
+        assertTrue(entryIndex >= 0);
+        Candle entryCandle = wickCandles.get(entryIndex);
+        BigDecimal deepLow = entryCandle.low().subtract(new BigDecimal("1000"));
+        assertTrue(deepLow.signum() > 0, "La mecha debe mantener un precio positivo");
+        wickCandles.set(entryIndex, new Candle(entryCandle.timestamp(), entryCandle.open(),
+                entryCandle.high(), deepLow, entryCandle.close(), entryCandle.volume()));
+
+        BacktestResult withWick = new BacktestEngine().run(wickCandles, new BigDecimal("20"));
+        assertTrue(withWick.maxDrawdownPercentage().compareTo(baseline.maxDrawdownPercentage()) > 0,
+                "El drawdown debe reflejar una caída intravela aunque el cierre se recupere");
+    }
+
+    @Test
     void procesaUnHistorialDeCincoMilVelas() {
         BacktestResult result = new BacktestEngine().run(
                 sampleCandles(5_000), new BigDecimal("20"));
