@@ -98,7 +98,7 @@ public class BacktestEngine {
                 } else if (entry != null && signal == EmaRegimeVolatilityStrategy.Signal.SELL) {
                     BigDecimal exit = candle.open().multiply(ONE.subtract(slippageRate));
                     capital = closePosition(capital, entry, qty, exit, feeRate, trades,
-                            entryCandle, candle);
+                            entryCandle, candle, "BEARISH_CROSS");
                     entry = null;
                     qty = null;
                     stopPrice = null;
@@ -110,8 +110,11 @@ public class BacktestEngine {
             // mantener mas exposicion. El bloqueo diario se reinicia al cambiar el dia UTC.
             if (entry != null && (dailyLossLocked || cumulativeLossLocked)) {
                 BigDecimal emergencyExit = candle.open().multiply(ONE.subtract(slippageRate));
+                String lockReason = dailyLossLocked && cumulativeLossLocked
+                        ? "DAILY_AND_CUMULATIVE_LOSS_LIMIT"
+                        : dailyLossLocked ? "DAILY_LOSS_LIMIT" : "CUMULATIVE_DRAWDOWN_LIMIT";
                 capital = closePosition(capital, entry, qty, emergencyExit, feeRate, trades,
-                        entryCandle, candle);
+                        entryCandle, candle, lockReason);
                 entry = null;
                 qty = null;
                 stopPrice = null;
@@ -154,8 +157,12 @@ public class BacktestEngine {
                 if (stopHit || dailyLossLocked || cumulativeLossLocked) {
                     BigDecimal exit = stopHit ? stopExecution
                             : candle.close().multiply(ONE.subtract(slippageRate));
+                    String exitReason = stopHit ? "STOP_LOSS"
+                            : dailyLossLocked && cumulativeLossLocked
+                            ? "DAILY_AND_CUMULATIVE_LOSS_LIMIT"
+                            : dailyLossLocked ? "DAILY_LOSS_LIMIT" : "CUMULATIVE_DRAWDOWN_LIMIT";
                     capital = closePosition(capital, entry, qty, exit, feeRate,
-                            trades, entryCandle, candle);
+                            trades, entryCandle, candle, exitReason);
                     entry = null;
                     qty = null;
                     stopPrice = null;
@@ -174,7 +181,7 @@ public class BacktestEngine {
             Candle last = candles.get(candles.size() - 1);
             BigDecimal exit = last.close().multiply(ONE.subtract(slippageRate));
             capital = closePosition(capital, entry, qty, exit, feeRate, trades,
-                    entryCandle, last);
+                    entryCandle, last, "END_OF_DATA");
             if (capital.compareTo(peak) > 0) peak = capital;
             maxDd = updateDrawdown(peak, capital, maxDd);
         }
@@ -198,7 +205,7 @@ public class BacktestEngine {
     private static BigDecimal closePosition(BigDecimal capital, BigDecimal entry,
                                             BigDecimal quantity, BigDecimal exit,
                                             BigDecimal feeRate, List<Trade> trades,
-                                            Candle entryCandle, Candle exitCandle) {
+                                            Candle entryCandle, Candle exitCandle, String exitReason) {
         BigDecimal gross = exit.subtract(entry).multiply(quantity);
         BigDecimal entryFee = entry.multiply(quantity).multiply(feeRate);
         BigDecimal exitFee = exit.multiply(quantity).multiply(feeRate);
@@ -207,7 +214,7 @@ public class BacktestEngine {
         // La comision de entrada ya se desconto al abrir la posicion.
         BigDecimal updatedCapital = capital.add(gross).subtract(exitFee);
         trades.add(new Trade(entryCandle.timestamp(), exitCandle.timestamp(),
-                entry, exit, quantity, gross, fees, net));
+                entry, exit, quantity, gross, fees, net, exitReason));
         return updatedCapital;
     }
 
