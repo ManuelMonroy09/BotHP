@@ -27,7 +27,7 @@ mvn spring-boot:run
 Para descargar hasta 500 velas cerradas de ETH en intervalo de 15 minutos y ejecutar un backtest sobre ellas:
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.arguments="--trading.data-source=hyperliquid,--hyperliquid.coin=ETH,--hyperliquid.interval=15m,--trading.candle-count=500"
+mvn spring-boot:run -Dspring-boot.run.arguments="--trading.data-source=hyperliquid --hyperliquid.coin=ETH --hyperliquid.interval=15m --trading.candle-count=500"
 ```
 
 Intervalos admitidos: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `1d`, `3d` y `1w`. La cantidad debe estar entre 51 y 5000 velas. Las velas que todavía no han cerrado se descartan para evitar señales basadas en precios que siguen cambiando.
@@ -39,7 +39,7 @@ Al elegir Hyperliquid, el programa guarda una copia CSV del dataset y otro CSV c
 Usa un CSV previamente guardado para separar cronológicamente el 70 % inicial del 30 % final:
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.arguments="--trading.data-source=csv,--trading.csv-path=data/backtests/ARCHIVO.csv,--trading.evaluation=out-of-sample"
+mvn spring-boot:run -Dspring-boot.run.arguments="--trading.data-source=csv --trading.csv-path=data/backtests/ARCHIVO.csv --trading.evaluation=out-of-sample"
 ```
 
 Reemplaza `ARCHIVO.csv` por el nombre real del dataset. El archivo debe contener el encabezado `timestamp,open,high,low,close,volume` y al menos 51 velas válidas.
