@@ -106,6 +106,18 @@ public class BacktestEngine {
                 }
             }
 
+            // Si el limite ya se cruzo en la apertura, cerrar la posicion antes de
+            // mantener mas exposicion. El bloqueo diario se reinicia al cambiar el dia UTC.
+            if (entry != null && (dailyLossLocked || cumulativeLossLocked)) {
+                BigDecimal emergencyExit = candle.open().multiply(ONE.subtract(slippageRate));
+                capital = closePosition(capital, entry, qty, emergencyExit, feeRate, trades,
+                        entryCandle, candle);
+                entry = null;
+                qty = null;
+                stopPrice = null;
+                entryCandle = null;
+            }
+
             if (entry != null) {
                 // OHLC no revela si el maximo ocurrio antes que el minimo.
                 // Para el drawdown usamos una secuencia conservadora: maximo y luego minimo/stop.
@@ -137,8 +149,12 @@ public class BacktestEngine {
                     cumulativeLossLocked = true;
                 }
 
-                if (stopHit) {
-                    capital = closePosition(capital, entry, qty, stopExecution, feeRate,
+                // Al tocar un limite diario/acumulado, se cierra al cierre de esta vela
+                // si el stop no se activo. Los gaps pueden producir una perdida mayor al limite.
+                if (stopHit || dailyLossLocked || cumulativeLossLocked) {
+                    BigDecimal exit = stopHit ? stopExecution
+                            : candle.close().multiply(ONE.subtract(slippageRate));
+                    capital = closePosition(capital, entry, qty, exit, feeRate,
                             trades, entryCandle, candle);
                     entry = null;
                     qty = null;
