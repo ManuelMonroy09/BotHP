@@ -4,6 +4,7 @@ import mx.jun.trading.backtest.BacktestEngine;
 import mx.jun.trading.backtest.CandleCsvStore;
 import mx.jun.trading.backtest.OutOfSampleEvaluator;
 import mx.jun.trading.backtest.PerformanceAnalyzer;
+import mx.jun.trading.backtest.TradeDiagnostics;
 import mx.jun.trading.market.Candle;
 import mx.jun.trading.market.HyperliquidMarketDataService;
 import mx.jun.trading.market.MarketDataService;
