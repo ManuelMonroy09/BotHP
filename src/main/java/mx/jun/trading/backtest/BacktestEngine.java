@@ -72,7 +72,11 @@ public class BacktestEngine {
         int losses = (int) trades.stream().filter(t -> t.netPnl().signum() < 0).count();
         BigDecimal profit = trades.stream().filter(t -> t.netPnl().signum() > 0).map(Trade::netPnl).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal loss = trades.stream().filter(t -> t.netPnl().signum() < 0).map(Trade::netPnl).reduce(BigDecimal.ZERO, BigDecimal::add).abs();
-        BigDecimal pf = loss.signum() == 0 ? (profit.signum() > 0 ? BigDecimal.valueOf(Double.POSITIVE_INFINITY) : BigDecimal.ZERO)
+
+        // BigDecimal no admite infinito. null representa un profit factor infinito
+        // cuando hay ganancias pero ninguna operación perdedora.
+        BigDecimal pf = loss.signum() == 0
+                ? (profit.signum() > 0 ? null : BigDecimal.ZERO)
                 : profit.divide(loss, 4, RoundingMode.HALF_UP);
 
         return new BacktestResult(initialCapital, capital, netPnl, returnPct, maxDd,
