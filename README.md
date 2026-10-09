@@ -32,7 +32,7 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--trading.data-source=hyperliqu
 
 Intervalos admitidos: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `1d`, `3d` y `1w`. La cantidad debe estar entre 51 y 5000 velas. Las velas que todavía no han cerrado se descartan para evitar señales basadas en precios que siguen cambiando.
 
-Al elegir Hyperliquid, el programa guarda una copia CSV del dataset y otro CSV con las operaciones simuladas dentro de `data/backtests/`. También imprime la huella SHA-256 del dataset para ayudar a identificar exactamente qué datos se evaluaron. Conserva esos archivos para comparar ejecuciones.
+Al elegir Hyperliquid, el programa guarda una copia CSV del dataset, otro CSV con las operaciones simuladas y un tercer CSV de diagnóstico dentro de `data/backtests/`. También imprime la huella SHA-256 del dataset para ayudar a identificar exactamente qué datos se evaluaron. Conserva esos archivos para comparar ejecuciones. El CSV de operaciones incluye `exitReason` (cruce bajista, stop-loss, límite de pérdida o fin del dataset). El diagnóstico incluye EMA20/EMA50 y sus pendientes al generarse la entrada, ATR porcentual, distancia del cierre a EMA50, retornos de las últimas 3 y 12 velas y excursiones adversa/favorable observadas mientras la posición estuvo abierta. Estas excursiones son descriptivas y no cambian la simulación.
 
 ## Evaluación fuera de muestra
 
