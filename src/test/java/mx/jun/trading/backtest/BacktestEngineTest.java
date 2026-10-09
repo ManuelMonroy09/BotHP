@@ -56,7 +56,7 @@ class BacktestEngineTest {
 
         for (int i = 0; i < count; i++) {
             BigDecimal open = previous;
-            BigDecimal change = i < 100 ? BigDecimal.ONE : new BigDecimal("-2");
+            BigDecimal change = i < 100 ? BigDecimal.ONE : new BigDecimal("-0.25");
             BigDecimal close = open.add(change);
             BigDecimal high = open.max(close).add(new BigDecimal("3"));
             BigDecimal low = open.min(close).subtract(new BigDecimal("3"));
