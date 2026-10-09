@@ -5,6 +5,8 @@ import mx.jun.trading.strategy.EmaRegimeVolatilityStrategy;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,12 +17,20 @@ public class BacktestEngine {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     public BacktestResult run(List<Candle> candles, BigDecimal initialCapital) {
-        return run(candles, initialCapital, FEE, SLIPPAGE);
+        return run(candles, initialCapital, FEE, SLIPPAGE,
+                BacktestRiskConfig.conservativeDefaults());
     }
 
     public BacktestResult run(List<Candle> candles, BigDecimal initialCapital,
                               BigDecimal feeRate, BigDecimal slippageRate) {
-        validateInputs(candles, initialCapital, feeRate, slippageRate);
+        return run(candles, initialCapital, feeRate, slippageRate,
+                BacktestRiskConfig.conservativeDefaults());
+    }
+
+    public BacktestResult run(List<Candle> candles, BigDecimal initialCapital,
+                              BigDecimal feeRate, BigDecimal slippageRate,
+                              BacktestRiskConfig riskConfig) {
+        validateInputs(candles, initialCapital, feeRate, slippageRate, riskConfig);
 
         // Los indicadores se calculan una sola vez: O(n), no una vez por cada prefijo.
         var strategy = new EmaRegimeVolatilityStrategy();
@@ -32,17 +42,53 @@ public class BacktestEngine {
         BigDecimal maxDd = BigDecimal.ZERO;
         BigDecimal entry = null;
         BigDecimal qty = null;
+        BigDecimal stopPrice = null;
         Candle entryCandle = null;
+        LocalDate currentUtcDay = null;
+        BigDecimal dayStartEquity = initialCapital;
+        BigDecimal previousCloseEquity = initialCapital;
+        boolean dailyLossLocked = false;
+        boolean cumulativeLossLocked = false;
 
-        // Una señal al cierre de la vela i se ejecuta en la apertura de la vela i+1.
+        // La señal al cierre de i se ejecuta en la apertura de i+1.
         for (int i = 50; i < candles.size(); i++) {
             Candle candle = candles.get(i);
+            LocalDate candleDay = candle.timestamp().atZone(ZoneOffset.UTC).toLocalDate();
+
+            if (!candleDay.equals(currentUtcDay)) {
+                currentUtcDay = candleDay;
+                dayStartEquity = previousCloseEquity;
+                dailyLossLocked = false;
+            }
+
+            BigDecimal openEquity = equityAt(candle.open(), capital, entry, qty);
+            if (dayStartEquity.signum() > 0
+                    && openEquity.compareTo(dayStartEquity.multiply(
+                    ONE.subtract(riskConfig.dailyLossLimitPercentage()))) <= 0) {
+                dailyLossLocked = true;
+            }
+            if (openEquity.compareTo(initialCapital.multiply(
+                    ONE.subtract(riskConfig.cumulativeDrawdownLimitPercentage()))) <= 0) {
+                cumulativeLossLocked = true;
+            }
 
             if (i > 50) {
                 var signal = signals.get(i - 1);
-                if (entry == null && signal == EmaRegimeVolatilityStrategy.Signal.BUY) {
+                if (entry == null && signal == EmaRegimeVolatilityStrategy.Signal.BUY
+                        && !dailyLossLocked && !cumulativeLossLocked) {
+                    BigDecimal equity = openEquity.max(BigDecimal.ZERO);
                     BigDecimal executionPrice = candle.open().multiply(ONE.add(slippageRate));
-                    BigDecimal quantity = capital.divide(executionPrice, 10, RoundingMode.DOWN);
+                    BigDecimal riskBudget = equity.multiply(riskConfig.riskPerTradePercentage());
+                    stopPrice = executionPrice.multiply(
+                            ONE.subtract(riskConfig.stopLossPercentage()));
+                    BigDecimal stopDistance = executionPrice.subtract(stopPrice);
+                    BigDecimal quantityByRisk = riskBudget.divide(stopDistance, 10, RoundingMode.DOWN);
+                    BigDecimal maxNotional = equity.multiply(
+                            riskConfig.maxPositionNotionalPercentage());
+                    BigDecimal quantityByExposure = maxNotional.divide(
+                            executionPrice, 10, RoundingMode.DOWN);
+                    BigDecimal quantity = quantityByRisk.min(quantityByExposure);
+
                     if (quantity.signum() > 0) {
                         entry = executionPrice;
                         qty = quantity;
@@ -51,50 +97,68 @@ public class BacktestEngine {
                     }
                 } else if (entry != null && signal == EmaRegimeVolatilityStrategy.Signal.SELL) {
                     BigDecimal exit = candle.open().multiply(ONE.subtract(slippageRate));
-                    BigDecimal gross = exit.subtract(entry).multiply(qty);
-                    BigDecimal entryFee = entry.multiply(qty).multiply(feeRate);
-                    BigDecimal exitFee = exit.multiply(qty).multiply(feeRate);
-                    BigDecimal fees = entryFee.add(exitFee);
-                    BigDecimal net = gross.subtract(fees);
-
-                    capital = capital.add(gross).subtract(exitFee);
-                    trades.add(new Trade(entryCandle.timestamp(), candle.timestamp(),
-                            entry, exit, qty, gross, fees, net));
+                    capital = closePosition(capital, entry, qty, exit, feeRate, trades,
+                            entryCandle, candle);
                     entry = null;
                     qty = null;
+                    stopPrice = null;
                     entryCandle = null;
                 }
             }
 
-            if (entry == null) {
-                if (capital.compareTo(peak) > 0) peak = capital;
-                maxDd = updateDrawdown(peak, capital, maxDd);
-            } else {
-                // Stress conservador: registra el maximo intravela y despues mide
-                // la caida hasta el minimo de esa misma vela. OHLC no revela el orden
-                // exacto de high y low, por lo que no asumimos una trayectoria favorable.
-                BigDecimal highEquity = capital.add(candle.high().subtract(entry).multiply(qty));
+            if (entry != null) {
+                // OHLC no revela si el maximo ocurrio antes que el minimo.
+                // Para el drawdown usamos una secuencia conservadora: maximo y luego minimo/stop.
+                BigDecimal highEquity = equityAt(candle.high(), capital, entry, qty);
                 if (highEquity.compareTo(peak) > 0) peak = highEquity;
 
-                BigDecimal lowEquity = capital.add(candle.low().subtract(entry).multiply(qty));
-                maxDd = updateDrawdown(peak, lowEquity, maxDd);
+                boolean stopHit = candle.low().compareTo(stopPrice) <= 0;
+                BigDecimal stopExecution = null;
+                BigDecimal riskEquity;
+                if (stopHit) {
+                    BigDecimal rawExit = candle.open().compareTo(stopPrice) <= 0
+                            ? candle.open() : stopPrice;
+                    stopExecution = rawExit.multiply(ONE.subtract(slippageRate));
+                    BigDecimal exitFee = stopExecution.multiply(qty).multiply(feeRate);
+                    riskEquity = capital.add(stopExecution.subtract(entry).multiply(qty))
+                            .subtract(exitFee);
+                } else {
+                    riskEquity = equityAt(candle.low(), capital, entry, qty);
+                }
+
+                maxDd = updateDrawdown(peak, riskEquity, maxDd);
+                if (dayStartEquity.signum() > 0
+                        && riskEquity.compareTo(dayStartEquity.multiply(
+                        ONE.subtract(riskConfig.dailyLossLimitPercentage()))) <= 0) {
+                    dailyLossLocked = true;
+                }
+                if (riskEquity.compareTo(initialCapital.multiply(
+                        ONE.subtract(riskConfig.cumulativeDrawdownLimitPercentage()))) <= 0) {
+                    cumulativeLossLocked = true;
+                }
+
+                if (stopHit) {
+                    capital = closePosition(capital, entry, qty, stopExecution, feeRate,
+                            trades, entryCandle, candle);
+                    entry = null;
+                    qty = null;
+                    stopPrice = null;
+                    entryCandle = null;
+                }
+            } else {
+                if (capital.compareTo(peak) > 0) peak = capital;
+                maxDd = updateDrawdown(peak, capital, maxDd);
             }
+
+            previousCloseEquity = equityAt(candle.close(), capital, entry, qty);
         }
 
-        // Liquidacion al cierre de la ultima vela, sin usar una señal de esa misma vela.
+        // Liquida al cierre de la ultima vela. No se usa su señal para decidir la entrada.
         if (entry != null) {
             Candle last = candles.get(candles.size() - 1);
             BigDecimal exit = last.close().multiply(ONE.subtract(slippageRate));
-            BigDecimal gross = exit.subtract(entry).multiply(qty);
-            BigDecimal entryFee = entry.multiply(qty).multiply(feeRate);
-            BigDecimal exitFee = exit.multiply(qty).multiply(feeRate);
-            BigDecimal fees = entryFee.add(exitFee);
-            BigDecimal net = gross.subtract(fees);
-
-            capital = capital.add(gross).subtract(exitFee);
-            trades.add(new Trade(entryCandle.timestamp(), last.timestamp(),
-                    entry, exit, qty, gross, fees, net));
-
+            capital = closePosition(capital, entry, qty, exit, feeRate, trades,
+                    entryCandle, last);
             if (capital.compareTo(peak) > 0) peak = capital;
             maxDd = updateDrawdown(peak, capital, maxDd);
         }
@@ -107,14 +171,34 @@ public class BacktestEngine {
                 .map(Trade::netPnl).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal loss = trades.stream().filter(t -> t.netPnl().signum() < 0)
                 .map(Trade::netPnl).reduce(BigDecimal.ZERO, BigDecimal::add).abs();
-
-        // null representa un profit factor infinito: hubo ganancias y ninguna perdida.
         BigDecimal profitFactor = loss.signum() == 0
                 ? (profit.signum() > 0 ? null : BigDecimal.ZERO)
                 : profit.divide(loss, 4, RoundingMode.HALF_UP);
 
         return new BacktestResult(initialCapital, capital, netPnl, returnPct, maxDd,
                 trades.size(), wins, losses, profitFactor, List.copyOf(trades));
+    }
+
+    private static BigDecimal closePosition(BigDecimal capital, BigDecimal entry,
+                                            BigDecimal quantity, BigDecimal exit,
+                                            BigDecimal feeRate, List<Trade> trades,
+                                            Candle entryCandle, Candle exitCandle) {
+        BigDecimal gross = exit.subtract(entry).multiply(quantity);
+        BigDecimal entryFee = entry.multiply(quantity).multiply(feeRate);
+        BigDecimal exitFee = exit.multiply(quantity).multiply(feeRate);
+        BigDecimal fees = entryFee.add(exitFee);
+        BigDecimal net = gross.subtract(fees);
+        // La comision de entrada ya se desconto al abrir la posicion.
+        BigDecimal updatedCapital = capital.add(gross).subtract(exitFee);
+        trades.add(new Trade(entryCandle.timestamp(), exitCandle.timestamp(),
+                entry, exit, quantity, gross, fees, net));
+        return updatedCapital;
+    }
+
+    private static BigDecimal equityAt(BigDecimal price, BigDecimal capital,
+                                        BigDecimal entry, BigDecimal quantity) {
+        if (entry == null || quantity == null) return capital;
+        return capital.add(price.subtract(entry).multiply(quantity));
     }
 
     private static BigDecimal updateDrawdown(BigDecimal peak, BigDecimal equity, BigDecimal currentMax) {
@@ -125,7 +209,8 @@ public class BacktestEngine {
     }
 
     private static void validateInputs(List<Candle> candles, BigDecimal initialCapital,
-                                       BigDecimal feeRate, BigDecimal slippageRate) {
+                                       BigDecimal feeRate, BigDecimal slippageRate,
+                                       BacktestRiskConfig riskConfig) {
         if (candles == null || candles.size() < 51) {
             throw new IllegalArgumentException("Se requieren al menos 51 velas");
         }
@@ -137,6 +222,9 @@ public class BacktestEngine {
         }
         if (slippageRate == null || slippageRate.signum() < 0 || slippageRate.compareTo(ONE) >= 0) {
             throw new IllegalArgumentException("El deslizamiento debe estar entre 0 y 1");
+        }
+        if (riskConfig == null) {
+            throw new IllegalArgumentException("La configuracion de riesgo es obligatoria");
         }
 
         Candle previous = null;
