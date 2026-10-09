@@ -41,10 +41,9 @@ public class HyperliquidMarketDataService {
     private final String infoUrl;
 
     public HyperliquidMarketDataService(
-            RestClient.Builder restClientBuilder,
             ObjectMapper objectMapper,
             @Value("${hyperliquid.info-url:https://api.hyperliquid.xyz/info}") String infoUrl) {
-        this.restClient = restClientBuilder.build();
+        this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
         this.infoUrl = infoUrl;
     }
