@@ -1,6 +1,6 @@
 package mx.jun.trading.runner;
 
-import mx.jun.trading.hyperliquid.HyperliquidMarketDataService;
+import mx.jun.trading.market.HyperliquidMarketDataService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
