@@ -24,7 +24,7 @@ class OutOfSampleEvaluatorTest {
         assertEquals(candles.get(139).timestamp(), evaluation.developmentEnd().timestamp());
         assertEquals(candles.get(140).timestamp(), evaluation.evaluationStart().timestamp());
         assertEquals(candles.get(199).timestamp(), evaluation.evaluationEnd().timestamp());
-        assertEquals(60, evaluation.candlesWithWarmup().size());
+        assertEquals(110, evaluation.candlesWithWarmup().size());
         assertEquals(evaluation.evaluationStart().timestamp(),
                 evaluation.candlesWithWarmup().get(OutOfSampleEvaluator.WARMUP_CANDLES).timestamp());
         assertNotNull(evaluation.result());
