@@ -79,6 +79,46 @@ class BacktestEngineTest {
                 "El drawdown debe reflejar una caída intravela aunque el cierre se recupere");
     }
 
+
+    @Test
+    void limitaElTamanoDePosicionYRespetaElStopLoss() {
+        List<Candle> candles = new ArrayList<>(sampleCandles(180));
+        List<EmaRegimeVolatilityStrategy.Signal> signals =
+                new EmaRegimeVolatilityStrategy().evaluateAll(candles);
+        int buySignal = -1;
+        for (int i = 50; i < candles.size() - 1; i++) {
+            if (signals.get(i) == EmaRegimeVolatilityStrategy.Signal.BUY) {
+                buySignal = i;
+                break;
+            }
+        }
+        assertTrue(buySignal >= 50, "La serie de prueba debe generar una entrada");
+        int entryIndex = buySignal + 1;
+        Candle entryCandle = candles.get(entryIndex);
+        BigDecimal stressedLow = entryCandle.open().multiply(new BigDecimal("0.97"));
+        candles.set(entryIndex, new Candle(entryCandle.timestamp(), entryCandle.open(),
+                entryCandle.high(), stressedLow, entryCandle.close(), entryCandle.volume()));
+
+        BacktestResult result = new BacktestEngine().run(candles, new BigDecimal("20"));
+        assertFalse(result.trades().isEmpty());
+        Trade firstTrade = result.trades().get(0);
+        assertEquals(firstTrade.entryTime(), firstTrade.exitTime(),
+                "Si el minimo de la vela de entrada toca el stop, la salida debe registrarse en esa vela");
+        assertTrue(firstTrade.quantity().multiply(firstTrade.entryPrice())
+                        .compareTo(new BigDecimal("10")) <= 0,
+                "La exposicion inicial no debe superar el 50% del capital inicial");
+        assertTrue(firstTrade.exitPrice().compareTo(firstTrade.entryPrice()) < 0,
+                "El stop-loss debe cerrar por debajo del precio de entrada");
+    }
+
+    @Test
+    void rechazaConfiguracionDeRiesgoInvalida() {
+        assertThrows(IllegalArgumentException.class, () -> new BacktestRiskConfig(
+                new BigDecimal("1.5"), new BigDecimal("0.015"),
+                new BigDecimal("0.50"), new BigDecimal("0.02"),
+                new BigDecimal("0.10")));
+    }
+
     @Test
     void procesaUnHistorialDeCincoMilVelas() {
         BacktestResult result = new BacktestEngine().run(
