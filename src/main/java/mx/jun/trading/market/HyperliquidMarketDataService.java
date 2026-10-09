@@ -62,7 +62,7 @@ public class HyperliquidMarketDataService {
         }
 
         long endTime = Instant.now().toEpochMilli();
-        long startTime = Instant.now().minus(intervalDuration.multipliedBy(count)).toEpochMilli();
+        long startTime = Instant.ofEpochMilli(endTime).minus(intervalDuration.multipliedBy(count + 2L)).toEpochMilli();
         Map<String, Object> payload = Map.of(
                 "type", "candleSnapshot",
                 "req", Map.of(
@@ -105,10 +105,18 @@ public class HyperliquidMarketDataService {
 
             candles.sort(Comparator.comparing(Candle::timestamp));
             List<Candle> unique = new ArrayList<>();
+            Instant now = Instant.ofEpochMilli(endTime);
             for (Candle candle : candles) {
+                // Excluir la vela en curso para evitar señales basadas en datos que aún cambian.
+                if (candle.timestamp().plus(intervalDuration).isAfter(now)) {
+                    continue;
+                }
                 if (unique.isEmpty() || !unique.get(unique.size() - 1).timestamp().equals(candle.timestamp())) {
                     unique.add(candle);
                 }
+            }
+            if (unique.size() > count) {
+                unique = new ArrayList<>(unique.subList(unique.size() - count, unique.size()));
             }
 
             if (unique.size() < 51) {
