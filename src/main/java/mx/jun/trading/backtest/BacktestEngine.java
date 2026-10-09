@@ -20,18 +20,7 @@ public class BacktestEngine {
 
     public BacktestResult run(List<Candle> candles, BigDecimal initialCapital,
                               BigDecimal feeRate, BigDecimal slippageRate) {
-        if (candles == null || candles.size() < 51) {
-            throw new IllegalArgumentException("Se requieren al menos 51 velas");
-        }
-        if (initialCapital == null || initialCapital.signum() <= 0) {
-            throw new IllegalArgumentException("Capital invalido");
-        }
-        if (feeRate == null || feeRate.signum() < 0 || feeRate.compareTo(ONE) >= 0) {
-            throw new IllegalArgumentException("La comision debe estar entre 0 y 1");
-        }
-        if (slippageRate == null || slippageRate.signum() < 0 || slippageRate.compareTo(ONE) >= 0) {
-            throw new IllegalArgumentException("El deslizamiento debe estar entre 0 y 1");
-        }
+        validateInputs(candles, initialCapital, feeRate, slippageRate);
 
         // Los indicadores se calculan una sola vez: O(n), no una vez por cada prefijo.
         var strategy = new EmaRegimeVolatilityStrategy();
@@ -53,8 +42,7 @@ public class BacktestEngine {
                 var signal = signals.get(i - 1);
                 if (entry == null && signal == EmaRegimeVolatilityStrategy.Signal.BUY) {
                     BigDecimal executionPrice = candle.open().multiply(ONE.add(slippageRate));
-                    BigDecimal availableCapital = capital;
-                    BigDecimal quantity = availableCapital.divide(executionPrice, 10, RoundingMode.DOWN);
+                    BigDecimal quantity = capital.divide(executionPrice, 10, RoundingMode.DOWN);
                     if (quantity.signum() > 0) {
                         entry = executionPrice;
                         qty = quantity;
@@ -78,14 +66,19 @@ public class BacktestEngine {
                 }
             }
 
-            BigDecimal equity = capital;
-            if (entry != null) {
-                equity = capital.add(candle.close().subtract(entry).multiply(qty));
+            if (entry == null) {
+                if (capital.compareTo(peak) > 0) peak = capital;
+                maxDd = updateDrawdown(peak, capital, maxDd);
+            } else {
+                // Stress conservador: registra el maximo intravela y despues mide
+                // la caida hasta el minimo de esa misma vela. OHLC no revela el orden
+                // exacto de high y low, por lo que no asumimos una trayectoria favorable.
+                BigDecimal highEquity = capital.add(candle.high().subtract(entry).multiply(qty));
+                if (highEquity.compareTo(peak) > 0) peak = highEquity;
+
+                BigDecimal lowEquity = capital.add(candle.low().subtract(entry).multiply(qty));
+                maxDd = updateDrawdown(peak, lowEquity, maxDd);
             }
-            if (equity.compareTo(peak) > 0) peak = equity;
-            BigDecimal drawdown = peak.signum() == 0 ? BigDecimal.ZERO
-                    : peak.subtract(equity).divide(peak, 10, RoundingMode.HALF_UP).multiply(HUNDRED);
-            if (drawdown.compareTo(maxDd) > 0) maxDd = drawdown;
         }
 
         // Liquidacion al cierre de la ultima vela, sin usar una señal de esa misma vela.
@@ -103,9 +96,7 @@ public class BacktestEngine {
                     entry, exit, qty, gross, fees, net));
 
             if (capital.compareTo(peak) > 0) peak = capital;
-            BigDecimal drawdown = peak.signum() == 0 ? BigDecimal.ZERO
-                    : peak.subtract(capital).divide(peak, 10, RoundingMode.HALF_UP).multiply(HUNDRED);
-            if (drawdown.compareTo(maxDd) > 0) maxDd = drawdown;
+            maxDd = updateDrawdown(peak, capital, maxDd);
         }
 
         BigDecimal netPnl = capital.subtract(initialCapital);
@@ -124,5 +115,54 @@ public class BacktestEngine {
 
         return new BacktestResult(initialCapital, capital, netPnl, returnPct, maxDd,
                 trades.size(), wins, losses, profitFactor, List.copyOf(trades));
+    }
+
+    private static BigDecimal updateDrawdown(BigDecimal peak, BigDecimal equity, BigDecimal currentMax) {
+        if (peak.signum() <= 0 || equity.compareTo(peak) >= 0) return currentMax;
+        BigDecimal drawdown = peak.subtract(equity)
+                .divide(peak, 10, RoundingMode.HALF_UP).multiply(HUNDRED);
+        return drawdown.compareTo(currentMax) > 0 ? drawdown : currentMax;
+    }
+
+    private static void validateInputs(List<Candle> candles, BigDecimal initialCapital,
+                                       BigDecimal feeRate, BigDecimal slippageRate) {
+        if (candles == null || candles.size() < 51) {
+            throw new IllegalArgumentException("Se requieren al menos 51 velas");
+        }
+        if (initialCapital == null || initialCapital.signum() <= 0) {
+            throw new IllegalArgumentException("Capital invalido");
+        }
+        if (feeRate == null || feeRate.signum() < 0 || feeRate.compareTo(ONE) >= 0) {
+            throw new IllegalArgumentException("La comision debe estar entre 0 y 1");
+        }
+        if (slippageRate == null || slippageRate.signum() < 0 || slippageRate.compareTo(ONE) >= 0) {
+            throw new IllegalArgumentException("El deslizamiento debe estar entre 0 y 1");
+        }
+
+        Candle previous = null;
+        for (int i = 0; i < candles.size(); i++) {
+            Candle candle = candles.get(i);
+            if (candle == null || candle.timestamp() == null || candle.open() == null
+                    || candle.high() == null || candle.low() == null || candle.close() == null
+                    || candle.volume() == null) {
+                throw new IllegalArgumentException("Vela incompleta en indice " + i);
+            }
+            if (candle.open().signum() <= 0 || candle.high().signum() <= 0
+                    || candle.low().signum() <= 0 || candle.close().signum() <= 0
+                    || candle.volume().signum() < 0) {
+                throw new IllegalArgumentException("Precio invalido o volumen negativo en indice " + i);
+            }
+            if (candle.high().compareTo(candle.open()) < 0
+                    || candle.high().compareTo(candle.close()) < 0
+                    || candle.low().compareTo(candle.open()) > 0
+                    || candle.low().compareTo(candle.close()) > 0
+                    || candle.high().compareTo(candle.low()) < 0) {
+                throw new IllegalArgumentException("Rango OHLC inconsistente en indice " + i);
+            }
+            if (previous != null && !candle.timestamp().isAfter(previous.timestamp())) {
+                throw new IllegalArgumentException("Las velas deben estar ordenadas por tiempo sin duplicados");
+            }
+            previous = candle;
+        }
     }
 }
