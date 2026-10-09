@@ -55,8 +55,8 @@ class HyperliquidMarketDataServiceTest {
         List<Candle> candles = service.getCandles("eth", "15m", 51);
 
         assertEquals(51, candles.size());
-        assertEquals(first.plusSeconds(9 * 15L * 60), candles.getFirst().timestamp());
-        assertEquals(first.plusSeconds(59 * 15L * 60), candles.getLast().timestamp());
+        assertEquals(Instant.ofEpochMilli(first.plusSeconds(9 * 15L * 60).toEpochMilli()), candles.getFirst().timestamp());
+        assertEquals(Instant.ofEpochMilli(first.plusSeconds(59 * 15L * 60).toEpochMilli()), candles.getLast().timestamp());
         assertTrue(candles.get(0).timestamp().isBefore(candles.getLast().timestamp()));
         server.verify();
     }
