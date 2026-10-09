@@ -42,8 +42,13 @@ public class HyperliquidMarketDataService {
 
     public HyperliquidMarketDataService(
             @Value("${hyperliquid.info-url:https://api.hyperliquid.xyz/info}") String infoUrl) {
-        this.restClient = RestClient.builder().build();
-        this.objectMapper = new ObjectMapper();
+        this(RestClient.builder().build(), new ObjectMapper(), infoUrl);
+    }
+
+    // Constructor separado para probar respuestas HTTP controladas sin llamar al mercado real.
+    HyperliquidMarketDataService(RestClient restClient, ObjectMapper objectMapper, String infoUrl) {
+        this.restClient = restClient;
+        this.objectMapper = objectMapper;
         this.infoUrl = infoUrl;
     }
 
