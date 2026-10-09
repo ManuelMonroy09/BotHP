@@ -100,6 +100,10 @@ class BacktestEngineTest {
         assertNotNull(result.maxDrawdownPercentage());
     }
 
+    /**
+     * Genera primero una tendencia bajista y luego una alcista para que la
+     * estrategia pueda observar un cruce EMA20/EMA50 nuevo y válido.
+     */
     private List<Candle> sampleCandles(int count) {
         List<Candle> candles = new ArrayList<>();
         Instant start = Instant.parse("2026-08-01T00:00:00Z");
@@ -107,7 +111,7 @@ class BacktestEngineTest {
 
         for (int i = 0; i < count; i++) {
             BigDecimal open = previous;
-            BigDecimal change = i < 100 ? BigDecimal.ONE : new BigDecimal("-0.25");
+            BigDecimal change = i < 80 ? new BigDecimal("-1") : new BigDecimal("3");
             BigDecimal close = open.add(change);
             BigDecimal high = open.max(close).add(new BigDecimal("3"));
             BigDecimal low = open.min(close).subtract(new BigDecimal("3"));
