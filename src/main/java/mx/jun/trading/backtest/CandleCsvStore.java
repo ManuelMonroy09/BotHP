@@ -22,7 +22,7 @@ import java.util.List;
 public class CandleCsvStore {
     private static final String CANDLE_HEADER = "timestamp,open,high,low,close,volume";
     private static final String TRADE_HEADER =
-            "entryTime,exitTime,entryPrice,exitPrice,quantity,grossPnl,fees,netPnl";
+            "entryTime,exitTime,entryPrice,exitPrice,quantity,grossPnl,fees,netPnl,exitReason";
 
     public Path saveSnapshot(String coin, String interval, List<Candle> candles) {
         if (candles == null || candles.size() < 2) {
@@ -85,7 +85,8 @@ public class CandleCsvStore {
                     .append(trade.quantity().toPlainString()).append(',')
                     .append(trade.grossPnl().toPlainString()).append(',')
                     .append(trade.fees().toPlainString()).append(',')
-                    .append(trade.netPnl().toPlainString()).append('\n');
+                    .append(trade.netPnl().toPlainString()).append(',')
+                    .append(trade.exitReason()).append('\n');
         }
         writeText(target, csv.toString());
         return target;
