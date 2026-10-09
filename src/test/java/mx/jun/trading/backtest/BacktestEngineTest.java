@@ -53,7 +53,7 @@ class BacktestEngineTest {
     }
 
     @Test
-    void elDrawdownIncluyeCaidasIntrvelares() {
+    void elDrawdownIncluyeCaidasIntravelares() {
         List<Candle> baselineCandles = sampleCandles(180);
         BacktestResult baseline = new BacktestEngine().run(baselineCandles, new BigDecimal("20"));
         assertFalse(baseline.trades().isEmpty(), "La prueba necesita una entrada");
