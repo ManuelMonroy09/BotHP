@@ -3,6 +3,7 @@ package mx.jun.trading.market;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -40,10 +41,16 @@ public class HyperliquidMarketDataService {
     private final ObjectMapper objectMapper;
     private final String infoUrl;
 
+    @Autowired
     public HyperliquidMarketDataService(
             @Value("${hyperliquid.info-url:https://api.hyperliquid.xyz/info}") String infoUrl) {
-        this.restClient = RestClient.builder().build();
-        this.objectMapper = new ObjectMapper();
+        this(RestClient.builder().build(), new ObjectMapper(), infoUrl);
+    }
+
+    // Constructor separado para probar respuestas HTTP controladas sin llamar al mercado real.
+    HyperliquidMarketDataService(RestClient restClient, ObjectMapper objectMapper, String infoUrl) {
+        this.restClient = restClient;
+        this.objectMapper = objectMapper;
         this.infoUrl = infoUrl;
     }
 

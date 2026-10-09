@@ -4,6 +4,7 @@ import mx.jun.trading.backtest.BacktestEngine;
 import mx.jun.trading.backtest.CandleCsvStore;
 import mx.jun.trading.backtest.OutOfSampleEvaluator;
 import mx.jun.trading.backtest.PerformanceAnalyzer;
+import mx.jun.trading.backtest.TradeDiagnostics;
 import mx.jun.trading.market.Candle;
 import mx.jun.trading.market.HyperliquidMarketDataService;
 import mx.jun.trading.market.MarketDataService;
@@ -109,6 +110,9 @@ public class StartupRunner implements CommandLineRunner {
             String evaluationDatasetPath = datasetPath.toString().replaceFirst("(?i)\\.csv$", "_out_of_sample.csv");
             Path tradesPath = candleCsvStore.saveTrades(evaluationDatasetPath, evaluation.result().trades());
             System.out.println("Operaciones fuera de muestra CSV: " + tradesPath.toAbsolutePath());
+            Path diagnosticsPath = new TradeDiagnostics().save(
+                    Path.of(evaluationDatasetPath), candles, evaluation.result().trades());
+            System.out.println("Diagnostico fuera de muestra CSV: " + diagnosticsPath.toAbsolutePath());
             System.out.println("Nota: esta prueba no garantiza rentabilidad futura y no envia ordenes reales.");
             return;
         }
@@ -122,6 +126,8 @@ public class StartupRunner implements CommandLineRunner {
         if (datasetPath != null) {
             Path tradesPath = candleCsvStore.saveTrades(datasetPath.toString(), result.trades());
             System.out.println("Operaciones CSV: " + tradesPath.toAbsolutePath());
+            Path diagnosticsPath = new TradeDiagnostics().save(datasetPath, candles, result.trades());
+            System.out.println("Diagnostico de operaciones CSV: " + diagnosticsPath.toAbsolutePath());
         }
     }
 }
