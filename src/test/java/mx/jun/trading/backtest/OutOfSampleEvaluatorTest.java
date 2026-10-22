@@ -14,17 +14,17 @@ class OutOfSampleEvaluatorTest {
 
     @Test
     void separaCronologicamenteYUsaVelasPreviasSoloComoCalentamiento() {
-        List<Candle> candles = sampleCandles(250);
+        List<Candle> candles = sampleCandles(200);
 
         OutOfSampleEvaluator.Evaluation evaluation =
                 new OutOfSampleEvaluator().evaluate(candles, new BigDecimal("20"));
 
-        assertEquals(175, evaluation.splitIndex());
+        assertEquals(140, evaluation.splitIndex());
         assertEquals(candles.get(0).timestamp(), evaluation.developmentStart().timestamp());
-        assertEquals(candles.get(174).timestamp(), evaluation.developmentEnd().timestamp());
-        assertEquals(candles.get(175).timestamp(), evaluation.evaluationStart().timestamp());
-        assertEquals(candles.get(249).timestamp(), evaluation.evaluationEnd().timestamp());
-        assertEquals(137, evaluation.candlesWithWarmup().size());
+        assertEquals(candles.get(139).timestamp(), evaluation.developmentEnd().timestamp());
+        assertEquals(candles.get(140).timestamp(), evaluation.evaluationStart().timestamp());
+        assertEquals(candles.get(199).timestamp(), evaluation.evaluationEnd().timestamp());
+        assertEquals(110, evaluation.candlesWithWarmup().size());
         assertEquals(evaluation.evaluationStart().timestamp(),
                 evaluation.candlesWithWarmup().get(OutOfSampleEvaluator.WARMUP_CANDLES).timestamp());
         assertNotNull(evaluation.result());

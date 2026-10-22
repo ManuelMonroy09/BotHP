@@ -3,80 +3,117 @@ package mx.jun.trading.strategy;
 import mx.jun.trading.indicator.AtrCalculator;
 import mx.jun.trading.indicator.EmaCalculator;
 import mx.jun.trading.market.Candle;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-/** Long-only EMA strategy with a 12-candle momentum confirmation. */
 public class EmaRegimeVolatilityStrategy {
-    private static final int FIRST_INDICATOR_INDEX = 50;
-    private static final int MOMENTUM_LOOKBACK = 12;
-    private static final BigDecimal MIN_ATR_PERCENT = new BigDecimal("0.05");
-    private static final BigDecimal MAX_ATR_PERCENT = new BigDecimal("3");
-    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
-
+    private final Mode mode;
     private final EmaCalculator ema = new EmaCalculator();
     private final AtrCalculator atr = new AtrCalculator();
 
-    public Signal evaluate(List<Candle> candles) {
-        if (candles == null || candles.isEmpty()) return Signal.HOLD;
-        List<Signal> signals = evaluateAll(candles);
-        return signals.get(signals.size() - 1);
+    public EmaRegimeVolatilityStrategy() {
+        this(Mode.EMA_CROSS);
     }
 
-    /**
-     * Calculates signals in O(n). BUY requires rising EMA20 above rising EMA50,
-     * price above EMA50, valid ATR and positive 12-candle momentum. SELL remains
-     * a bearish EMA cross. Signals use only data available at candle close.
-     */
+    public EmaRegimeVolatilityStrategy(Mode mode) {
+        this.mode = java.util.Objects.requireNonNull(mode);
+    }
+
+    public Signal evaluate(List<Candle> candles) {
+        if (candles == null || candles.size() < 51) return Signal.HOLD;
+        return evaluateAll(candles).get(candles.size() - 1);
+    }
+
+    /** Calcula las señales históricas disponibles para la variante seleccionada. */
     public List<Signal> evaluateAll(List<Candle> candles) {
         if (candles == null || candles.isEmpty()) return List.of();
 
         int size = candles.size();
-        var signals = new ArrayList<Signal>(Collections.nCopies(size, Signal.HOLD));
-        if (size <= FIRST_INDICATOR_INDEX) return List.copyOf(signals);
+        var signals = new java.util.ArrayList<Signal>(
+                java.util.Collections.nCopies(size, Signal.HOLD));
+        if (size < 51) return List.copyOf(signals);
 
         List<BigDecimal> closes = candles.stream().map(Candle::close).toList();
         List<BigDecimal> ema20Values = ema.calculate(closes, 20);
         List<BigDecimal> ema50Values = ema.calculate(closes, 50);
         List<BigDecimal> atrValues = atr.calculate(candles, 14);
 
-        for (int i = FIRST_INDICATOR_INDEX; i < size; i++) {
+        for (int i = 50; i < size; i++) {
+            if (mode == Mode.RSI_TREND_PULLBACK) {
+                BigDecimal rsi = rsi(closes, i, 14);
+                BigDecimal e50 = ema50Values.get(i - 49);
+                BigDecimal e50p = ema50Values.get(i - 50);
+                boolean trendUp = e50.compareTo(e50p) > 0;
+                boolean priceAboveTrend = closes.get(i).compareTo(e50) > 0;
+
+                // Buy a pullback only while the medium-term trend is rising. Exit
+                // when momentum recovers or price loses that trend filter.
+                if (rsi.compareTo(BigDecimal.valueOf(60)) >= 0 || !priceAboveTrend) {
+                    signals.set(i, Signal.SELL);
+                } else if (trendUp && rsi.compareTo(BigDecimal.valueOf(30)) <= 0) {
+                    signals.set(i, Signal.BUY);
+                }
+                continue;
+            }
             BigDecimal e20 = ema20Values.get(i - 19);
-            BigDecimal e20Previous = ema20Values.get(i - 20);
+            BigDecimal e20p = ema20Values.get(i - 20);
             BigDecimal e50 = ema50Values.get(i - 49);
-            BigDecimal e50Previous = ema50Values.get(i - 50);
+            BigDecimal e50p = ema50Values.get(i - 50);
             BigDecimal close = closes.get(i);
             BigDecimal atr14 = atrValues.get(i - 14);
-            BigDecimal atrPct = atr14.divide(close, 10, RoundingMode.HALF_UP).multiply(HUNDRED);
+            BigDecimal atrPct = atr14.divide(close, 10, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
 
-            boolean validVolatility = atrPct.compareTo(MIN_ATR_PERCENT) > 0
-                    && atrPct.compareTo(MAX_ATR_PERCENT) < 0;
-            boolean bearishCross = e20Previous.compareTo(e50Previous) >= 0
-                    && e20.compareTo(e50) < 0;
+            boolean validVolatility = atrPct.compareTo(BigDecimal.valueOf(0.05)) > 0
+                    && atrPct.compareTo(BigDecimal.valueOf(3)) < 0;
+            boolean bullishCross = e20p.compareTo(e50p) <= 0 && e20.compareTo(e50) > 0;
+            boolean bearishCross = e20p.compareTo(e50p) >= 0 && e20.compareTo(e50) < 0;
+
             if (bearishCross) {
                 signals.set(i, Signal.SELL);
                 continue;
             }
 
-            // Avoid buying a short bounce while the 12-candle price change is negative.
-            if (i < FIRST_INDICATOR_INDEX + MOMENTUM_LOOKBACK) continue;
-            boolean positiveMomentum = close.compareTo(closes.get(i - MOMENTUM_LOOKBACK)) > 0;
-            boolean trendingUp = e50.compareTo(e50Previous) > 0 && close.compareTo(e50) > 0;
+            boolean trendingUp = atrPct.compareTo(BigDecimal.valueOf(3)) < 0
+                    && atrPct.compareTo(BigDecimal.valueOf(0.05)) > 0
+                    && e50.compareTo(e50p) > 0
+                    && close.compareTo(e50) > 0;
 
-            if (trendingUp
-                    && e20.compareTo(e50) > 0
-                    && e20.compareTo(e20Previous) > 0
-                    && e50.compareTo(e50Previous) > 0
-                    && validVolatility
-                    && positiveMomentum) {
+            if (trendingUp && e20.compareTo(e50) > 0 && e20.compareTo(e20p) > 0
+                    && e50.compareTo(e50p) > 0 && close.compareTo(e50) > 0
+                    && validVolatility && bullishCross) {
                 signals.set(i, Signal.BUY);
             }
         }
         return List.copyOf(signals);
+    }
+
+    private static BigDecimal rsi(List<BigDecimal> closes, int index, int period) {
+        BigDecimal gains = BigDecimal.ZERO;
+        BigDecimal losses = BigDecimal.ZERO;
+        for (int i = index - period + 1; i <= index; i++) {
+            BigDecimal change = closes.get(i).subtract(closes.get(i - 1));
+            if (change.signum() > 0) gains = gains.add(change);
+            else losses = losses.add(change.abs());
+        }
+        if (losses.signum() == 0) return gains.signum() == 0 ? BigDecimal.valueOf(50) : BigDecimal.valueOf(100);
+        BigDecimal rs = gains.divide(losses, 10, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(100).subtract(BigDecimal.valueOf(100)
+                .divide(BigDecimal.ONE.add(rs), 10, RoundingMode.HALF_UP));
+    }
+
+    public enum Mode {
+        EMA_CROSS, RSI_TREND_PULLBACK;
+
+        public static Mode parse(String value) {
+            try {
+                return valueOf(value.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("Estrategia no válida: " + value
+                        + ". Opciones: EMA_CROSS, RSI_TREND_PULLBACK");
+            }
+        }
     }
 
     public enum Signal { BUY, SELL, HOLD }

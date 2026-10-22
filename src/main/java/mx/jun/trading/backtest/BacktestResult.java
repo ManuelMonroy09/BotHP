@@ -7,4 +7,5 @@ public record BacktestResult(BigDecimal initialCapital, BigDecimal finalCapital,
                              BigDecimal netPnl, BigDecimal returnPercentage,
                              BigDecimal maxDrawdownPercentage, int totalTrades,
                              int winningTrades, int losingTrades, BigDecimal profitFactor,
-                             List<Trade> trades) {}
+                             List<Trade> trades, List<BigDecimal> equityCurve,
+                             long candleIntervalMillis) {}

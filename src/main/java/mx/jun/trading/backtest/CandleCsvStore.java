@@ -1,6 +1,7 @@
 package mx.jun.trading.backtest;
 
 import mx.jun.trading.market.Candle;
+import mx.jun.trading.market.FundingRate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -22,7 +23,8 @@ import java.util.List;
 public class CandleCsvStore {
     private static final String CANDLE_HEADER = "timestamp,open,high,low,close,volume";
     private static final String TRADE_HEADER =
-            "entryTime,exitTime,entryPrice,exitPrice,quantity,grossPnl,fees,netPnl,exitReason";
+            "entryTime,exitTime,direction,entryPrice,exitPrice,quantity,grossPnl,fees,fundingPnl,netPnl,exitReason";
+    private static final String FUNDING_HEADER = "timestamp,fundingRate";
 
     public Path saveSnapshot(String coin, String interval, List<Candle> candles) {
         if (candles == null || candles.size() < 2) {
@@ -73,6 +75,48 @@ public class CandleCsvStore {
         }
     }
 
+    public Path saveFundingRates(String datasetPath, List<FundingRate> rates) {
+        Path source = Path.of(datasetPath);
+        Path target = source.resolveSibling(removeExtension(source.getFileName().toString()) + "_funding.csv");
+        StringBuilder csv = new StringBuilder(FUNDING_HEADER).append('\n');
+        Instant previous = null;
+        for (FundingRate rate : rates) {
+            if (previous != null && !rate.timestamp().isAfter(previous)) {
+                throw new IllegalArgumentException("Funding timestamps must be strictly increasing");
+            }
+            csv.append(rate.timestamp()).append(',').append(rate.rate().toPlainString()).append('\n');
+            previous = rate.timestamp();
+        }
+        writeText(target, csv.toString());
+        return target;
+    }
+
+    public List<FundingRate> loadFundingRates(Path path) {
+        try {
+            List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+            if (lines.isEmpty() || !FUNDING_HEADER.equals(lines.get(0))) {
+                throw new IllegalArgumentException("Funding CSV inválido. Encabezado esperado: " + FUNDING_HEADER);
+            }
+            List<FundingRate> rates = new ArrayList<>(Math.max(0, lines.size() - 1));
+            Instant previous = null;
+            for (int i = 1; i < lines.size(); i++) {
+                String[] fields = lines.get(i).split(",", -1);
+                if (fields.length != 2) throw new IllegalArgumentException("Funding CSV inválido en línea " + (i + 1));
+                FundingRate rate = new FundingRate(Instant.parse(fields[0]), new BigDecimal(fields[1]));
+                if (previous != null && !rate.timestamp().isAfter(previous)) {
+                    throw new IllegalArgumentException("Funding timestamps must be strictly increasing");
+                }
+                rates.add(rate);
+                previous = rate.timestamp();
+            }
+            return List.copyOf(rates);
+        } catch (IOException e) {
+            throw new IllegalStateException("No se pudo leer funding CSV: " + path.toAbsolutePath(), e);
+        } catch (NumberFormatException | java.time.DateTimeException e) {
+            throw new IllegalArgumentException("Funding CSV contiene valores inválidos: " + path, e);
+        }
+    }
+
     public Path saveTrades(String datasetPath, List<Trade> trades) {
         Path source = Path.of(datasetPath);
         Path target = source.resolveSibling(removeExtension(source.getFileName().toString()) + "_trades.csv");
@@ -80,11 +124,13 @@ public class CandleCsvStore {
         for (Trade trade : trades) {
             csv.append(trade.entryTime()).append(',')
                     .append(trade.exitTime()).append(',')
+                    .append(trade.direction()).append(',')
                     .append(trade.entryPrice().toPlainString()).append(',')
                     .append(trade.exitPrice().toPlainString()).append(',')
                     .append(trade.quantity().toPlainString()).append(',')
                     .append(trade.grossPnl().toPlainString()).append(',')
                     .append(trade.fees().toPlainString()).append(',')
+                    .append(trade.fundingPnl().toPlainString()).append(',')
                     .append(trade.netPnl().toPlainString()).append(',')
                     .append(trade.exitReason()).append('\n');
         }

@@ -1,6 +1,8 @@
 package mx.jun.trading.backtest;
 
 import mx.jun.trading.market.Candle;
+import mx.jun.trading.market.FundingRate;
+import mx.jun.trading.strategy.EmaRegimeVolatilityStrategy;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -11,7 +13,7 @@ import java.util.List;
  */
 public class OutOfSampleEvaluator {
     public static final double DEFAULT_DEVELOPMENT_FRACTION = 0.70;
-    public static final int WARMUP_CANDLES = 62;
+    public static final int WARMUP_CANDLES = 50;
 
     private final BacktestEngine backtestEngine;
 
@@ -24,10 +26,51 @@ public class OutOfSampleEvaluator {
     }
 
     public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital) {
-        return evaluate(candles, initialCapital, DEFAULT_DEVELOPMENT_FRACTION);
+        return evaluate(candles, initialCapital, DEFAULT_DEVELOPMENT_FRACTION, true, false);
     }
 
     public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction) {
+        return evaluate(candles, initialCapital, developmentFraction, true, false);
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowShorts) {
+        return evaluate(candles, initialCapital, developmentFraction, true, allowShorts);
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowLongs, boolean allowShorts) {
+        return evaluate(candles, initialCapital, developmentFraction, allowLongs, allowShorts,
+                BacktestEngine.DEFAULT_FEE_RATE, BacktestEngine.DEFAULT_SLIPPAGE_RATE);
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowLongs, boolean allowShorts,
+                               BigDecimal feeRate, BigDecimal slippageRate) {
+        return evaluate(candles, initialCapital, developmentFraction, allowLongs, allowShorts,
+                feeRate, slippageRate, BacktestRiskConfig.conservativeDefaults(),
+                EmaRegimeVolatilityStrategy.Mode.EMA_CROSS);
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowLongs, boolean allowShorts,
+                               BigDecimal feeRate, BigDecimal slippageRate, BacktestRiskConfig riskConfig) {
+        return evaluate(candles, initialCapital, developmentFraction, allowLongs, allowShorts,
+                feeRate, slippageRate, riskConfig, EmaRegimeVolatilityStrategy.Mode.EMA_CROSS);
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowLongs, boolean allowShorts,
+                               BigDecimal feeRate, BigDecimal slippageRate, BacktestRiskConfig riskConfig,
+                               EmaRegimeVolatilityStrategy.Mode strategyMode) {
+        return evaluate(candles, initialCapital, developmentFraction, allowLongs, allowShorts,
+                feeRate, slippageRate, riskConfig, strategyMode, List.of());
+    }
+
+    public Evaluation evaluate(List<Candle> candles, BigDecimal initialCapital, double developmentFraction,
+                               boolean allowLongs, boolean allowShorts,
+                               BigDecimal feeRate, BigDecimal slippageRate, BacktestRiskConfig riskConfig,
+                               EmaRegimeVolatilityStrategy.Mode strategyMode, List<FundingRate> fundingRates) {
         if (candles == null) {
             throw new IllegalArgumentException("El dataset no puede ser null");
         }
@@ -48,11 +91,13 @@ public class OutOfSampleEvaluator {
         }
 
         validateChronologicalData(candles);
-        // Se incluyen 62 velas previas para inicializar EMA/ATR y la ventana de momentum
-        // de 12 velas. El motor no abre operaciones durante el calentamiento.
+        // Se incluyen 50 velas previas solo para inicializar indicadores.
+        // BacktestEngine no abre operaciones durante el calentamiento: la primera
+        // señal evaluable corresponde a splitIndex y se ejecuta, como pronto, en splitIndex + 1.
         List<Candle> evaluationWithWarmup = List.copyOf(
                 candles.subList(splitIndex - WARMUP_CANDLES, candles.size()));
-        BacktestResult result = backtestEngine.run(evaluationWithWarmup, initialCapital);
+        BacktestResult result = backtestEngine.run(evaluationWithWarmup, initialCapital,
+                feeRate, slippageRate, riskConfig, allowLongs, allowShorts, strategyMode, fundingRates);
 
         return new Evaluation(splitIndex, WARMUP_CANDLES, candles.get(0),
                 candles.get(splitIndex - 1), candles.get(splitIndex),

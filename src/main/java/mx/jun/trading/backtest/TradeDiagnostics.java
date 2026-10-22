@@ -10,7 +10,10 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Writes a per-trade diagnostic report. These metrics explain the market context;
@@ -19,7 +22,7 @@ import java.util.List;
 public class TradeDiagnostics {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final String HEADER = String.join(",",
-            "entryTime", "exitTime", "exitReason", "entrySignalClose",
+            "entryTime", "exitTime", "direction", "exitReason", "entrySignalClose",
             "ema20AtSignal", "ema50AtSignal", "ema20SlopePct", "ema50SlopePct",
             "atrPct", "closeVsEma50Pct", "return3CandlesPct", "return12CandlesPct",
             "maxAdverseExcursionPct", "maxFavorableExcursionPct",
@@ -36,11 +39,13 @@ public class TradeDiagnostics {
         List<BigDecimal> ema20 = emaCalculator.calculate(closes, 20);
         List<BigDecimal> ema50 = emaCalculator.calculate(closes, 50);
         List<BigDecimal> atr14 = atrCalculator.calculate(candles, 14);
+        Map<Instant, Integer> candleIndices = new HashMap<>(candles.size() * 2);
+        for (int i = 0; i < candles.size(); i++) candleIndices.put(candles.get(i).timestamp(), i);
 
-        StringBuilder csv = new StringBuilder(HEADER).append('\n');
+        StringBuilder csv = new StringBuilder(HEADER.length() + trades.size() * 320).append(HEADER).append('\n');
         for (Trade trade : trades) {
-            int entryIndex = indexOf(candles, trade.entryTime());
-            int exitIndex = indexOf(candles, trade.exitTime());
+            int entryIndex = candleIndices.getOrDefault(trade.entryTime(), -1);
+            int exitIndex = candleIndices.getOrDefault(trade.exitTime(), -1);
             if (entryIndex < 1 || exitIndex < entryIndex) {
                 throw new IllegalArgumentException("No se pudo ubicar temporalmente la operación " + trade.entryTime());
             }
@@ -68,11 +73,16 @@ public class TradeDiagnostics {
                 lowest = lowest.min(candles.get(i).low());
                 highest = highest.max(candles.get(i).high());
             }
-            BigDecimal adverseExcursion = percent(lowest.subtract(trade.entryPrice()), trade.entryPrice());
-            BigDecimal favorableExcursion = percent(highest.subtract(trade.entryPrice()), trade.entryPrice());
+            BigDecimal adverseExcursion = trade.side() > 0
+                    ? percent(lowest.subtract(trade.entryPrice()), trade.entryPrice())
+                    : percent(trade.entryPrice().subtract(highest), trade.entryPrice());
+            BigDecimal favorableExcursion = trade.side() > 0
+                    ? percent(highest.subtract(trade.entryPrice()), trade.entryPrice())
+                    : percent(trade.entryPrice().subtract(lowest), trade.entryPrice());
 
             append(csv, trade.entryTime().toString());
             append(csv, trade.exitTime().toString());
+            append(csv, trade.direction());
             append(csv, trade.exitReason());
             append(csv, signalClose);
             append(csv, e20);
@@ -101,13 +111,6 @@ public class TradeDiagnostics {
         } catch (IOException e) {
             throw new IllegalStateException("No se pudo guardar el informe de diagnóstico: " + target, e);
         }
-    }
-
-    private static int indexOf(List<Candle> candles, java.time.Instant timestamp) {
-        for (int i = 0; i < candles.size(); i++) {
-            if (candles.get(i).timestamp().equals(timestamp)) return i;
-        }
-        return -1;
     }
 
     private static BigDecimal percent(BigDecimal numerator, BigDecimal denominator) {
