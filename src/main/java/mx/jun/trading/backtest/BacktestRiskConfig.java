@@ -11,7 +11,15 @@ public record BacktestRiskConfig(
         BigDecimal stopLossPercentage,
         BigDecimal maxPositionNotionalPercentage,
         BigDecimal dailyLossLimitPercentage,
-        BigDecimal cumulativeDrawdownLimitPercentage) {
+        BigDecimal cumulativeDrawdownLimitPercentage,
+        BigDecimal takeProfitPercentage) {
+
+    public BacktestRiskConfig(BigDecimal riskPerTradePercentage, BigDecimal stopLossPercentage,
+                              BigDecimal maxPositionNotionalPercentage, BigDecimal dailyLossLimitPercentage,
+                              BigDecimal cumulativeDrawdownLimitPercentage) {
+        this(riskPerTradePercentage, stopLossPercentage, maxPositionNotionalPercentage,
+                dailyLossLimitPercentage, cumulativeDrawdownLimitPercentage, BigDecimal.ZERO);
+    }
 
     public static BacktestRiskConfig conservativeDefaults() {
         return new BacktestRiskConfig(
@@ -19,7 +27,8 @@ public record BacktestRiskConfig(
                 new BigDecimal("0.015"),
                 new BigDecimal("0.50"),
                 new BigDecimal("0.02"),
-                new BigDecimal("0.10"));
+                new BigDecimal("0.10"),
+                BigDecimal.ZERO);
     }
 
     public BacktestRiskConfig {
@@ -28,6 +37,10 @@ public record BacktestRiskConfig(
         validateFraction("Exposicion maxima", maxPositionNotionalPercentage);
         validateFraction("Limite diario", dailyLossLimitPercentage);
         validateFraction("Limite acumulado", cumulativeDrawdownLimitPercentage);
+        if (takeProfitPercentage == null || takeProfitPercentage.signum() < 0
+                || takeProfitPercentage.compareTo(BigDecimal.ONE) >= 0) {
+            throw new IllegalArgumentException("Take-profit debe estar entre 0 y 1; 0 lo desactiva");
+        }
     }
 
     private static void validateFraction(String name, BigDecimal value) {

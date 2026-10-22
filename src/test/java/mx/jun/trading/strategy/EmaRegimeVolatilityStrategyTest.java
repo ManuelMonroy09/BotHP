@@ -95,4 +95,37 @@ class EmaRegimeVolatilityStrategyTest {
         assertTrue(buyCount > 0, "Los datos de prueba deben producir al menos una entrada alcista");
     }
 
+    @Test
+    void rsiSoloCompraPullbackCuandoLaTendenciaEma50SigueAlAlza() {
+        var risingThenPullback = candlesWithChanges(100, i -> i < 86
+                ? new BigDecimal("2") : BigDecimal.ONE.negate());
+        var strategy = new EmaRegimeVolatilityStrategy(
+                EmaRegimeVolatilityStrategy.Mode.RSI_TREND_PULLBACK);
+
+        assertEquals(EmaRegimeVolatilityStrategy.Signal.BUY, strategy.evaluate(risingThenPullback));
+    }
+
+    @Test
+    void rsiNoCompraDebajoDeUnaEma50EnDescenso() {
+        var falling = candlesWithChanges(120, i -> new BigDecimal("-2"));
+        var signals = new EmaRegimeVolatilityStrategy(
+                EmaRegimeVolatilityStrategy.Mode.RSI_TREND_PULLBACK).evaluateAll(falling);
+
+        assertFalse(signals.contains(EmaRegimeVolatilityStrategy.Signal.BUY));
+    }
+
+    private List<Candle> candlesWithChanges(int count, java.util.function.IntFunction<BigDecimal> changeAt) {
+        var candles = new ArrayList<Candle>();
+        Instant start = Instant.parse("2026-09-25T20:00:00Z");
+        BigDecimal price = new BigDecimal("3500");
+        for (int i = 0; i < count; i++) {
+            BigDecimal close = price.add(changeAt.apply(i));
+            candles.add(new Candle(start.plusSeconds(i * 900L), price,
+                    price.max(close).add(BigDecimal.ONE), price.min(close).subtract(BigDecimal.ONE),
+                    close, BigDecimal.TEN));
+            price = close;
+        }
+        return candles;
+    }
+
 }
