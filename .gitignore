@@ -4,6 +4,18 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+/secrets/
+/.secrets/
+/data/paper/
+
 ### STS ###
 .apt_generated
 .classpath

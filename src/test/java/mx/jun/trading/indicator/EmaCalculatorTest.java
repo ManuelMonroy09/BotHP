@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EmaCalculatorTest {
 
@@ -35,5 +36,17 @@ class EmaCalculatorTest {
                 0,
                 result.get(1).compareTo(new BigDecimal("102.0000000000"))
         );
+    }
+
+    @Test
+    void mantienePrecisionAcotadaEnSeriesLargas() {
+        List<BigDecimal> prices = java.util.stream.IntStream.range(0, 5_000)
+                .mapToObj(i -> BigDecimal.valueOf(2_000 + (i % 17), 2))
+                .toList();
+
+        List<BigDecimal> result = new EmaCalculator().calculate(prices, 20);
+
+        assertEquals(4_981, result.size());
+        assertTrue(result.stream().allMatch(value -> value.scale() <= 10));
     }
 }

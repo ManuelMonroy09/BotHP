@@ -51,7 +51,8 @@ public class EmaCalculator {
             BigDecimal currentEma = currentPrice
                     .subtract(previousEma)
                     .multiply(multiplier)
-                    .add(previousEma);
+                    .add(previousEma)
+                    .setScale(10, java.math.RoundingMode.HALF_UP);
 
             emaValues.add(currentEma);
 
