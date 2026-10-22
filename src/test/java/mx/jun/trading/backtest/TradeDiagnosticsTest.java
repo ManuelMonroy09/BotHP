@@ -37,6 +37,26 @@ class TradeDiagnosticsTest {
     }
 
     @Test
+    void noCuentaExtremosPosterioresAUnaSalidaEnLaApertura() throws Exception {
+        List<Candle> candles = flatCandles(60);
+        int entryIndex = 52;
+        int exitIndex = 54;
+        Candle originalExit = candles.get(exitIndex);
+        candles.set(exitIndex, new Candle(originalExit.timestamp(), new BigDecimal("100"),
+                new BigDecimal("150"), new BigDecimal("50"), new BigDecimal("100"), BigDecimal.TEN));
+
+        Trade trade = new Trade(candles.get(entryIndex).timestamp(), candles.get(exitIndex).timestamp(),
+                new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("0.1"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 1, "SIGNAL_REVERSAL");
+
+        Path report = new TradeDiagnostics().save(tempDir.resolve("reversal.csv"), candles, List.of(trade));
+        String[] values = Files.readAllLines(report).get(1).split(",", -1);
+
+        assertEquals("-1.000000", values[13], "MAE no debe contar el mínimo posterior a la salida");
+        assertEquals("1.000000", values[14], "MFE no debe contar el máximo posterior a la salida");
+    }
+
+    @Test
     void guardaMotivoDeSalidaEnCsvDeOperaciones() throws Exception {
         Candle candle = new Candle(Instant.parse("2026-08-01T00:00:00Z"),
                 new BigDecimal("100"), new BigDecimal("102"), new BigDecimal("98"),
@@ -52,6 +72,16 @@ class TradeDiagnosticsTest {
         List<String> lines = Files.readAllLines(tradesPath);
         assertTrue(lines.getFirst().endsWith("exitReason"));
         assertTrue(lines.get(1).endsWith("STOP_LOSS"));
+    }
+
+    private List<Candle> flatCandles(int count) {
+        List<Candle> candles = new ArrayList<>();
+        Instant start = Instant.parse("2026-08-01T00:00:00Z");
+        for (int i = 0; i < count; i++) {
+            candles.add(new Candle(start.plusSeconds(i * 900L), new BigDecimal("100"),
+                    new BigDecimal("101"), new BigDecimal("99"), new BigDecimal("100"), BigDecimal.TEN));
+        }
+        return candles;
     }
 
     private List<Candle> sampleCandles(int count) {

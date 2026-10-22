@@ -67,12 +67,29 @@ public class TradeDiagnostics {
             BigDecimal return12 = percent(signalClose.subtract(candles.get(signalIndex - 12).close()),
                     candles.get(signalIndex - 12).close());
 
-            BigDecimal lowest = candles.get(entryIndex).low();
-            BigDecimal highest = candles.get(entryIndex).high();
-            for (int i = entryIndex + 1; i <= exitIndex; i++) {
-                lowest = lowest.min(candles.get(i).low());
-                highest = highest.max(candles.get(i).high());
+            /*
+             * OHLC bars do not reveal the order of intrabar prices. Include complete
+             * candles only while the position is known to have remained open for the
+             * whole candle. For an intrabar/open exit, use the known execution price
+             * as the terminal point instead of counting the exit candle's later extremes.
+             * END_OF_DATA exits at the final close, so its whole candle was in-play.
+             */
+            BigDecimal lowest = trade.entryPrice();
+            BigDecimal highest = trade.entryPrice();
+            for (int i = entryIndex; i < exitIndex; i++) {
+                Candle candle = candles.get(i);
+                lowest = lowest.min(candle.low());
+                highest = highest.max(candle.high());
             }
+            if ("END_OF_DATA".equals(trade.exitReason())) {
+                Candle exitCandle = candles.get(exitIndex);
+                lowest = lowest.min(exitCandle.low());
+                highest = highest.max(exitCandle.high());
+            } else {
+                lowest = lowest.min(trade.exitPrice());
+                highest = highest.max(trade.exitPrice());
+            }
+
             BigDecimal adverseExcursion = trade.side() > 0
                     ? percent(lowest.subtract(trade.entryPrice()), trade.entryPrice())
                     : percent(trade.entryPrice().subtract(highest), trade.entryPrice());
